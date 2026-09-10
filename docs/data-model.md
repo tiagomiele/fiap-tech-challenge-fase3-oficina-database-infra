@@ -4,7 +4,7 @@
 
 Este repositório cria e configura o serviço RDS PostgreSQL. O schema funcional
 pertence ao repositório da aplicação
-([oficina-backend-fiap-fase3](https://github.com/tiagomiele/oficina-backend-fiap-fase3)),
+([fiap-tech-challenge-fase3-oficina-backend](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend)),
 onde as migrations Flyway são a única fonte de verdade.
 
 Este documento descreve o modelo **real**, extraído das migrations abaixo, e não um

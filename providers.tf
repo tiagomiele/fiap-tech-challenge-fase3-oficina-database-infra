@@ -6,7 +6,7 @@ provider "aws" {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "terraform"
-      Repository  = "oficina-database-infra-fiap-fase3"
+      Repository  = "fiap-tech-challenge-fase3-oficina-database-infra"
     }
   }
 }

@@ -26,7 +26,7 @@ criada neste repositório: alterações de schema pertencem ao Flyway do backend
 ## Índices implementados no backend
 
 A migration Flyway `V4__indices_de_consulta.sql` do repositório
-`oficina-backend-fiap-fase3` implementa os três índices prioritários abaixo. O schema continua sendo responsabilidade da aplicação, não deste repositório.
+`fiap-tech-challenge-fase3-oficina-backend` implementa os três índices prioritários abaixo. O schema continua sendo responsabilidade da aplicação, não deste repositório.
 
 1. `orcamentos_itens_ordem_servico (id_servico_sku, tipo_item)` — suporta a
    verificação de vínculo ativo executada a cada tentativa de inativar serviço ou

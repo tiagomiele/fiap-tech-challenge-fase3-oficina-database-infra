@@ -95,7 +95,7 @@ class SyncDatabaseOutputsTest(unittest.TestCase):
             self.outputs,
             "oficina-org",
             "oficina-auth-homolog",
-            "tiagomiele/oficina-backend-fiap-fase3",
+            "tiagomiele/fiap-tech-challenge-fase3-oficina-backend",
             "homolog",
         )
 
@@ -115,13 +115,13 @@ class SyncDatabaseOutputsTest(unittest.TestCase):
             github_client.calls,
             [
                 (
-                    "tiagomiele/oficina-backend-fiap-fase3",
+                    "tiagomiele/fiap-tech-challenge-fase3-oficina-backend",
                     "homolog",
                     "APP_DB_URL",
                     "jdbc:postgresql://database.example:5432/oficina",
                 ),
                 (
-                    "tiagomiele/oficina-backend-fiap-fase3",
+                    "tiagomiele/fiap-tech-challenge-fase3-oficina-backend",
                     "homolog",
                     "DEPLOY_ENABLED",
                     "true",

@@ -6,7 +6,7 @@
 | `er-model.svg` | imagem renderizada usada em [`../data-model.md`](../data-model.md) |
 
 A fonte reflete as migrations Flyway `V1`, `V2` e `V3` do repositório
-[oficina-backend-fiap-fase3](https://github.com/tiagomiele/oficina-backend-fiap-fase3),
+[fiap-tech-challenge-fase3-oficina-backend](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend),
 não um modelo idealizado. Ao mudar uma migration lá, atualize aqui a fonte, a imagem e
 [`../data-model.md`](../data-model.md).
 

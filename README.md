@@ -1,198 +1,80 @@
-# Oficina Database Infrastructure — Fase 3
+# Oficina Fase 3 — Database
 
-Infraestrutura como código do banco PostgreSQL gerenciado da oficina mecânica na AWS
-Academy. Este repositório entrega **o serviço de banco e sua configuração**; o schema
-funcional é responsabilidade das migrations Flyway do repositório da aplicação.
+Documentação do banco gerenciado, do modelo relacional e dos controles de consistência e desempenho. A visão completa da Oficina está no [repositório central](https://github.com/tiagomiele/backend).
+
+Projeto de implementação: [fiap-tech-challenge-fase3-oficina-database-infra](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-database-infra)
+
+## Visão de negócio
+
+O Database preserva a memória operacional da oficina. Nele ficam clientes e sua situação cadastral, veículos, catálogos, estoque, fornecedores, Ordens de Serviço, históricos de status e lançamentos financeiros.
+
+Essa base permite autenticar somente clientes ativos, manter a rastreabilidade do atendimento, impedir inconsistências de estoque e produzir relatórios e indicadores. Por isso, privacidade, integridade, recuperação e desempenho são requisitos de negócio, não apenas decisões técnicas.
 
 ## Responsabilidades
 
-- Amazon RDS PostgreSQL privado, criptografado e com SSL obrigatório;
-- DB subnet group e security group restrito às origens autorizadas;
-- parameter group, armazenamento, backup, manutenção e retenção;
-- exportação configurável dos logs do PostgreSQL para o CloudWatch Logs;
-- telemetria agregada e sanitizada do RDS para o New Relic;
-- outputs de conexão sem credenciais;
-- states Terraform independentes por ambiente;
-- documentação do modelo de dados real e da revisão de índices.
+- provisionar Amazon RDS PostgreSQL privado e criptografado;
+- restringir conectividade aos componentes autorizados;
+- configurar armazenamento, backup, manutenção e proteção por ambiente;
+- exportar logs e telemetria agregada sem expor dados pessoais;
+- fornecer outputs de conexão sem usuário ou senha;
+- manter states HCP independentes para homologação e produção;
+- documentar o modelo relacional, relacionamentos, constraints e índices.
 
-Fora do escopo: migrations, schema, índices funcionais e qualquer recurso IAM.
+As migrations Flyway V1–V4 permanecem no Backend como fonte executável do schema. Este projeto entrega o serviço gerenciado e não duplica a definição funcional das tabelas.
 
-## Arquitetura
+## Arquitetura do componente
 
-```mermaid
-flowchart LR
-    Lambda[Lambda login por CPF] --> RDS[(RDS PostgreSQL privado)]
-    App[Backend no EKS] --> RDS
-    VPC[VPC e subnets privadas] --> RDS
-    TF[HCP Terraform] --> RDS
-    RDS --> CW[CloudWatch Logs]
-    CW --> Collector[Lambda agendada de telemetria]
-    Collector --> NR[New Relic]
-```
+![Arquitetura do Database com RDS PostgreSQL privado, Terraform e observabilidade](docs/assets/arquitetura-database.png)
 
-Detalhes em [`docs/architecture.md`](docs/architecture.md). O modelo entidade-relacionamento
-final está em [`docs/data-model.md`](docs/data-model.md), com fonte versionada em
-[`docs/diagrams/er-model.mmd`](docs/diagrams/er-model.mmd).
+## Modelo arquitetural e práticas
 
-## Tecnologias
+O projeto utiliza **Infrastructure as Code declarativa**. Terraform descreve RDS, subnet group, security group, parâmetros, backup, logs, telemetria e outputs. O plan permite revisar impactos antes do apply, e o state remoto separa homologação de produção.
 
-- Terraform `>= 1.6, < 2.0` com state no HCP Terraform;
-- Amazon RDS PostgreSQL 16 (`db.t3.micro`, `gp3`);
-- AWS Security Groups, subnets privadas, CloudWatch Logs, Lambda e EventBridge;
-- New Relic Event API para métricas e contagens sanitizadas;
-- GitHub Actions com aprovação por GitHub Environment.
+O modelo de dados é relacional e normalizado, com PKs, FKs, chaves compostas, constraints e índices orientados às consultas reais. O Backend controla as transações e migrations; o banco reforça invariantes que não devem depender apenas da aplicação.
 
-## Variáveis e segredos
+Clean Architecture é aplicada ao Backend, não ao repositório Terraform. Aqui, as práticas equivalentes são separação de responsabilidades, configuração por variáveis, mínimo privilégio de rede, ausência de segredos no Git, validação estática e documentação das decisões.
 
-Variáveis Terraform obrigatórias, cadastradas no workspace HCP:
+## Stack e ferramentas
 
-| Variável | Origem | Observação |
-|---|---|---|
-| `vpc_id` | output do repositório de Kubernetes | |
-| `private_subnet_ids` | output do repositório de Kubernetes | HCL, ao menos duas AZs |
-| `allowed_security_group_ids` | `eks_cluster_security_group_id` | HCL |
-| `db_password` | definida por quem opera | sensível, mínimo de 16 caracteres |
-
-Principais variáveis opcionais (padrões completos em
-[`variables.tf`](variables.tf) e exemplos em [`environments/`](environments)):
-
-| Variável | Padrão | Efeito |
-|---|---|---|
-| `enabled_cloudwatch_logs_exports` | `["postgresql"]` | logs exportados; `[]` desliga |
-| `manage_cloudwatch_log_groups` | `true` | cria o log group para aplicar retenção |
-| `cloudwatch_logs_retention_days` | `7` | retenção do log no CloudWatch |
-| `log_min_duration_statement_ms` | `1000` | limiar de consulta lenta |
-| `log_statement` | `"ddl"` | escopo de SQL registrado |
-| `performance_insights_enabled` | `false` | recurso pago, opcional |
-| `monitoring_interval` | `0` | Enhanced Monitoring exige role IAM existente |
-| `multi_az` | `false` global; `true` no perfil production | réplica síncrona em outra AZ |
-| `rds_newrelic_telemetry_enabled` | `false` | cria a coleta agendada; a configuração central habilita por ambiente |
-| `newrelic_account_id` / `newrelic_license_key` | `0` / vazia | credenciais da Event API mantidas no HCP Terraform |
-| `backup_retention_days` | `7` | retenção do backup automático |
-| `deletion_protection` | `false` global; `true` no perfil production | ver [ADR 0006](docs/adr/0006-backup-e-retencao.md) |
-
-Segredos nunca ficam no repositório: `*.tfvars` está no `.gitignore` e o CI roda
-Gitleaks.
-
-Credenciais no workspace HCP e no GitHub Environment, renovadas a cada sessão do
-Learner Lab: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`. No
-GitHub, cada ambiente ainda usa o secret `TF_API_TOKEN` e as variables
-`TF_CLOUD_ORGANIZATION`, `TF_WORKSPACE_HOMOLOG`, `TF_WORKSPACE_PRODUCTION` e
-`ENABLE_TERRAFORM_APPLY`.
-
-## Outputs necessários ao Kubernetes e à aplicação
-
-| Output | Uso |
+| Área | Tecnologias |
 |---|---|
-| `database_endpoint` | host do banco na configuração do backend e da Lambda |
-| `database_port` | `5432` |
-| `database_name` | banco inicial `oficina` |
-| `jdbc_url` | URL JDBC sem usuário e sem senha |
-| `database_security_group_id` | integrações de rede futuras |
-| `database_log_groups` | validação de observabilidade |
-| `performance_insights_enabled` | evidência de controle de custo |
-| `rds_newrelic_telemetry_function_name` | Lambda que publica `OficinaRdsSample` no New Relic |
+| Banco | Amazon RDS PostgreSQL 16, SSL, backup e logs PostgreSQL |
+| Modelo funcional | Flyway, SQL relacional, constraints e índices |
+| Infraestrutura | Terraform, HCP Terraform, AWS Security Groups e sub-redes privadas |
+| Telemetria | CloudWatch Logs, Lambda Python, EventBridge e New Relic Event API |
+| Qualidade | Terraform Validate, TFLint, testes Python e validação do diagrama ER |
+| Segurança | Checkov, Trivy, Gitleaks e revisão de parâmetros sensíveis |
+| Entrega | GitHub Actions, GitHub Environments e sincronização de outputs |
 
-Os inputs vêm do repositório de Kubernetes (`vpc_id`, `private_subnet_ids`,
-`eks_cluster_security_group_id`). Ver [`docs/repositories.md`](docs/repositories.md).
+## Execução e deploy
 
-## Ambientes
-
-| Branch | `environment` | Workspace HCP | GitHub Environment |
-|---|---|---|---|
-| `homolog` | `homolog` | `oficina-database-homolog` | `homolog` |
-| `main` | `production` | `oficina-database-production` | `production` |
-
-Produção usa Multi-AZ, proteção contra exclusão, snapshot final, retenção maior de backup
-e de log. Performance Insights permanece opcional. Ver [`docs/cost.md`](docs/cost.md) e
-[ADR 0005](docs/adr/0005-separacao-de-ambientes.md).
-
-## Validação estática (sem custo)
+Validação local do projeto original:
 
 ```bash
 terraform fmt -check -recursive
-terraform init -backend=false -input=false
+terraform init -backend=false -input=false -lockfile=readonly
 terraform validate
 tflint --recursive
 python3 scripts/validate_docs.py
 ```
 
-O CI executa os mesmos passos, mais Trivy, Gitleaks, verificação dos nomes de variável
-dos `*.tfvars.example` e verificação de ausência de recurso IAM. Ele apresenta quatro
-jobs sequenciais: `Repository validation → Terraform validation → Database integration tests → Security validation`. O CI **não** usa credencial AWS.
+Pull Requests executam CI e Terraform Plan sem apply. O merge em `homolog` provisiona homologação e sincroniza a conexão com Auth e Backend. A promoção para `main` executa produção sob o GitHub Environment protegido.
 
-## Plan, apply e destroy
+- [CI/CD integrado da solução](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/blob/documentation/docs/cicd-promocao.md)
+- [Bootstrap AWS](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/blob/documentation/docs/bootstrap-aws-do-zero.md)
+- [Evidência histórica do apply de produção](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-database-infra/actions/runs/34529053307)
 
-Configure os workspaces conforme [`docs/hcp-terraform.md`](docs/hcp-terraform.md).
+## Documentação técnica
 
-Pelo GitHub Actions:
+- [Modelo relacional e relacionamentos](docs/modelo-relacional.md)
+- [Visualização do modelo relacional](docs/assets/modelo-relacional-database.png)
+- [Fonte Mermaid editável do diagrama ER](docs/diagrams/er-model.mmd)
+- [Consistência do modelo](docs/adr/0001-consistencia-modelo.md)
+- [Índices e desempenho](docs/indices-desempenho.md)
+- [RFC da escolha do PostgreSQL](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/blob/documentation/docs/decisions/rfc/0002-postgresql-rds.md)
 
-- Pull Requests para `homolog` ou `main` executam automaticamente um plan remoto sem apply quando a infraestrutura muda;
-- merges em `homolog` exibem `Validate configuration and AWS → Terraform database → Deployment summary`, executando `plan → apply → sincronização JDBC` sem aprovação manual;
-- merges em `main` executam o mesmo fluxo em um único job, com uma única aprovação no GitHub Environment `production`;
-- a sincronização atualiza `db_url` no workspace Auth e `APP_DB_URL`/`DEPLOY_ENABLED` no GitHub Environment do Backend;
-- `workflow_dispatch` do deploy permite repetir o fluxo na branch correspondente durante bootstrap ou recuperação;
-- destroy não faz parte da esteira e permanece manual via Terraform CLI.
+## Swagger/Postman
 
-A escrita no repositório Backend usa preferencialmente uma GitHub App instalada apenas em `fiap-tech-challenge-fase3-oficina-backend`, com permissão **Environments: read and write**. Configure `SYNC_APP_CLIENT_ID` com o Client ID da GitHub App e `SYNC_APP_PRIVATE_KEY` com a chave privada, uma única vez nas variables/secrets do repositório Database. `GITHUB_SYNC_TOKEN` permanece disponível somente como alternativa temporária de recuperação.
+Não aplicável: este repositório não publica APIs. Os contratos da solução estão no [índice central de APIs e testes](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/blob/documentation/docs/evidencias.md).
 
-Pela CLI, com o workspace configurado:
-
-```bash
-export TF_CLOUD_ORGANIZATION=<organizacao>
-export TF_WORKSPACE=oficina-database-homolog
-
-aws sts get-caller-identity   # falha aqui significa credencial expirada
-terraform init -input=false -lockfile=readonly
-terraform plan -input=false
-terraform apply -input=false      # somente após revisar o plan
-terraform destroy -input=false    # ao final da coleta de evidências
-```
-
-Pull Requests nunca executam apply. O Auto apply do HCP permanece desligado porque a
-orquestração e o gate pertencem ao GitHub Environment.
-
-## Validação dos logs
-
-Depois do apply, valide a exportação, a retenção e o registro de conexões conforme
-[`docs/observability.md`](docs/observability.md). O log é intencionalmente conservador:
-`log_statement = "ddl"` e parâmetros de bind truncados, para que CPF, e-mail e telefone
-não cheguem ao CloudWatch.
-
-## Backup e exclusão
-
-Backup automático usa retenção de 7 dias em homologação e 14 em produção, com janela
-03:00-04:00 UTC. O perfil versionado de produção exige `multi_az = true`,
-`deletion_protection = true`, `skip_final_snapshot = false` e snapshot final. Para uma
-demonstração descartável no AWS Academy, a configuração central aceita explicitamente
-`-UseAwsAcademyDisposableProductionProfile`; esse override reduz HA e deve ser removido
-antes da promoção final. Racional completo no [ADR 0006](docs/adr/0006-backup-e-retencao.md).
-
-## Estado atual
-
-Nenhum recurso está provisionado por este repositório no momento: não há instância RDS
-ativa nem endpoint válido até que um apply seja executado com credenciais válidas do
-Learner Lab e as evidências sejam coletadas.
-
-## Documentação
-
-- [Arquitetura](docs/architecture.md)
-- [Modelo de dados final](docs/data-model.md)
-- [Revisão de índices e consultas](docs/index-review.md)
-- [Observabilidade](docs/observability.md)
-- [Custo](docs/cost.md)
-- [AWS Academy](docs/aws-academy.md)
-- [HCP Terraform e execução](docs/hcp-terraform.md)
-- [Validação](docs/validation.md)
-- [Checklist de evidências](docs/evidence-checklist.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Decisões de arquitetura (ADR)](docs/adr/README.md)
-- [Diagramas](docs/diagrams/README.md)
-- [Repositórios da solução](docs/repositories.md)
-
-## Contribuição
-
-- mudanças somente por Pull Request para `homolog`;
-- `main` representa produção e recebe apenas promoção a partir de `homolog`;
-- plan revisado antes de qualquer apply;
-- nenhuma senha, credencial ou arquivo de state versionado.
+O banco não possui endpoint público. Evidências devem utilizar pipelines e consultas autenticadas, sempre sem publicar credenciais ou dados pessoais.

@@ -74,6 +74,10 @@ jobs:
       TARGET_ENVIRONMENT: homolog
       TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
       TF_WORKSPACE: ${{ vars.TF_WORKSPACE_HOMOLOG }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +88,36 @@ jobs:
 
       - name: Terraform init
         run: terraform init -input=false -lockfile=readonly
+
+      - name: Adopt existing telemetry log group
+        run: |
+          set -euo pipefail
+          resource_address='aws_cloudwatch_log_group.rds_telemetry["enabled"]'
+          log_group_name="/aws/lambda/oficina-${TARGET_ENVIRONMENT}-rds-newrelic-telemetry"
+
+          if terraform state show "$resource_address" >/dev/null 2>&1; then
+            echo "Log Group já gerenciado pelo Terraform."
+            exit 0
+          fi
+
+          if ! aws logs describe-log-groups \
+            --region "$AWS_REGION" \
+            --log-group-name-prefix "$log_group_name" \
+            --no-paginate \
+            --query 'logGroups[].logGroupName' \
+            --output text | tr '\t' '\n' | grep -Fxq "$log_group_name"; then
+            echo "Log Group não existe; o Terraform irá criá-lo."
+            exit 0
+          fi
+
+          cat > existing-rds-telemetry-log-group.auto.tf <<EOF
+          import {
+            to = aws_cloudwatch_log_group.rds_telemetry["enabled"]
+            id = "$log_group_name"
+          }
+          EOF
+
+          echo "Log Group existente será importado pelo Terraform."
 
       - name: Terraform plan
         run: terraform plan -input=false -no-color
@@ -193,6 +227,36 @@ jobs:
 
       - name: Terraform init
         run: terraform init -input=false -lockfile=readonly
+
+      - name: Adopt existing telemetry log group
+        run: |
+          set -euo pipefail
+          resource_address='aws_cloudwatch_log_group.rds_telemetry["enabled"]'
+          log_group_name="/aws/lambda/oficina-${TARGET_ENVIRONMENT}-rds-newrelic-telemetry"
+
+          if terraform state show "$resource_address" >/dev/null 2>&1; then
+            echo "Log Group já gerenciado pelo Terraform."
+            exit 0
+          fi
+
+          if ! aws logs describe-log-groups \
+            --region "$AWS_REGION" \
+            --log-group-name-prefix "$log_group_name" \
+            --no-paginate \
+            --query 'logGroups[].logGroupName' \
+            --output text | tr '\t' '\n' | grep -Fxq "$log_group_name"; then
+            echo "Log Group não existe; o Terraform irá criá-lo."
+            exit 0
+          fi
+
+          cat > existing-rds-telemetry-log-group.auto.tf <<EOF
+          import {
+            to = aws_cloudwatch_log_group.rds_telemetry["enabled"]
+            id = "$log_group_name"
+          }
+          EOF
+
+          echo "Log Group existente será importado pelo Terraform."
 
       - name: Terraform plan
         run: terraform plan -input=false -no-color
